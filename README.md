@@ -9,6 +9,18 @@
 - 用 cosine similarity（余弦相似度）检索 Top-K（前 K 个）片段；
 - 让答案附带 `[Page N]` 页面引用，并在需要时打印检索分数。
 
+## 目录
+
+- [RAG 流程](#architecture)
+- [15 分钟跑通](#quickstart)
+- [OpenAI-compatible API](#openai)
+- [替换 PDF](#replace-pdf)
+- [测试](#tests)
+- [局限与路线图](#roadmap)
+- [归属与许可证](#attribution)
+- [故障排查](#troubleshooting)
+
+<a id="architecture"></a>
 ## RAG 的一条完整路径
 
 ```mermaid
@@ -27,6 +39,7 @@ flowchart LR
 
 PDF 和问题都要经过同一个嵌入模型，才能在同一向量空间中比较；对话模型只接收检索出来的上下文，而不是整本 PDF。术语的直观解释见 [`docs/concepts.md`](docs/concepts.md)。
 
+<a id="quickstart"></a>
 ## 15 分钟跑通：本地 Ollama
 
 这一条路径不会把 PDF 内容或问题发送到云端。第一次下载模型需要磁盘空间和网络；生成答案时模型在 Ollama 中运行。
@@ -38,7 +51,7 @@ PDF 和问题都要经过同一个嵌入模型，才能在同一向量空间中�
 macOS/Linux：
 
 ```sh
-git clone <本仓库地址> pdf-rag
+git clone https://github.com/kannseiLiu/rag-from-scratch-for-beginners.git pdf-rag
 cd pdf-rag
 python3 -m venv .venv
 source .venv/bin/activate
@@ -50,7 +63,7 @@ python -m pip install -e ".[test]"
 Windows PowerShell：
 
 ```powershell
-git clone <本仓库地址> pdf-rag
+git clone https://github.com/kannseiLiu/rag-from-scratch-for-beginners.git pdf-rag
 Set-Location pdf-rag
 py -3.11 -m venv .venv
 # 若 `python` 已指向 Python 3.11+，也可用：python -m venv .venv
@@ -60,7 +73,7 @@ python -m pip install -e ".[test]"
 # 等价写法：pip install -e .[test]
 ```
 
-`<本仓库地址>` 是你实际复制的 Git 地址；如果代码已经在本地，直接 `cd` 到项目目录即可。安装 `.[test]` 会同时安装运行依赖和 pytest 测试工具；只想运行程序时，`python -m pip install -e .` 也可以。
+如果代码已经在本地，直接 `cd` 到项目目录即可。安装 `.[test]` 会同时安装运行依赖和 pytest 测试工具；只想运行程序时，`python -m pip install -e .` 也可以。
 
 ### 2. 安装并启动 Ollama
 
@@ -89,7 +102,7 @@ Windows PowerShell：
 Copy-Item .env.example .env
 ```
 
-默认配置已经指向本地 Ollama。运行一个有页码来源的精确命令：
+默认配置已经指向本地 Ollama：`RAG_PROVIDER=ollama`、`OLLAMA_BASE_URL=http://127.0.0.1:11434`、`OLLAMA_EMBEDDING_MODEL=nomic-embed-text`、`OLLAMA_CHAT_MODEL=qwen3:4b`。这些值与 `.env.example` 和程序的 Settings 默认值一致。运行一个有页码来源的精确命令：
 
 ```sh
 pdf-rag ask --pdf data/dpr-paper.pdf --question "What datasets are used to evaluate DPR?" --show-sources
@@ -109,7 +122,7 @@ Page | Score
 5 | 0.776
 ```
 
-若答案不在文档上下文中，程序提示模型返回：`I cannot find this information in the document.`。`Indexed 61 chunks.` 是本仓库这份示例 PDF 在默认 1200/200 参数下的结果；换 PDF 或模型不会改变分块数，但 PDF 文本长度会改变分块数。
+若答案不在文档上下文中，程序提示模型返回：`I cannot find this information in the document.`。`Indexed 61 chunks.` 是本仓库这份示例 PDF 在默认 1200/200 参数下的结果；更换模型不影响分块数，更换 PDF 或提取出的文本可能改变分块数。
 
 ### 刚才发生了什么？
 
@@ -127,9 +140,10 @@ Page | Score
 
 核心模块在 `src/beginner_pdf_rag/`：`pdf_loader.py` 负责页面，`chunking.py` 负责片段，`retrieval.py` 负责相似度，`providers.py` 负责服务适配，`pipeline.py` 串起索引和提问，`cli.py` 负责命令行。你不需要先掌握这些文件，先运行命令，再逐个对照即可。
 
+<a id="openai"></a>
 ## OpenAI-compatible API 路径
 
-这条路径适合没有本地硬件、需要托管模型，或已经有兼容 OpenAI SDK 的服务。默认配置使用 OpenAI：嵌入模型 `text-embedding-3-small`，对话模型 `gpt-4.1-mini`。模型名称和价格可能更新，请查阅 [OpenAI 模型目录](https://developers.openai.com/api/docs/models)；API 调用形态见 [Responses API 文档](https://developers.openai.com/api/reference/cli/resources/responses/methods/create)。
+这条路径适合没有本地硬件、需要托管模型，或已经有兼容 OpenAI SDK 的服务。默认配置使用 `OPENAI_BASE_URL=https://api.openai.com/v1`、嵌入模型 `OPENAI_EMBEDDING_MODEL=text-embedding-3-small` 和对话模型 `OPENAI_CHAT_MODEL=gpt-4.1-mini`。模型名称和价格可能更新，请查阅 [OpenAI 模型目录](https://developers.openai.com/api/docs/models)；API 调用形态见 [Responses API 文档](https://developers.openai.com/api/reference/cli/resources/responses/methods/create)。
 
 ### 安全配置
 
@@ -156,6 +170,7 @@ pdf-rag ask --provider openai --pdf data/dpr-paper.pdf --question "What datasets
 
 程序会读取当前工作目录的 `.env`。如果只想临时设置而不保存到文件，也可以在当前 shell 设置环境变量，但不要把值贴进聊天或提交记录。OpenAI 路径会把 PDF 片段和问题发送给你配置的服务；发送前先确认文档包含的信息可以外传。
 
+<a id="replace-pdf"></a>
 ## 换成自己的 PDF
 
 `data/dpr-paper.pdf` 是示例，不是输入限制。把自己的文件放在一个明确的路径，然后替换 `--pdf` 的值：
@@ -170,6 +185,7 @@ pdf-rag ask --pdf "data/my-report.pdf" --question "这个报告的主要结论�
 
 本项目使用 `pypdf` 提取 PDF 内已有的文字层，不识别图片里的字。扫描件通常只有页面图片，运行时会报告 `No extractable text was found. Run OCR on this PDF and try again.`。请先使用你信任的 OCR（Optical Character Recognition，光学字符识别）工具生成带文字层的副本，再把副本传给 `--pdf`；检查 OCR 结果，尤其是表格、公式、双栏排版和中文。不要因为程序显示了页码就认为 OCR 内容正确。
 
+<a id="tests"></a>
 ## 测试
 
 激活虚拟环境后运行：
@@ -184,18 +200,29 @@ python -m pytest -q
 python3 -m pytest tests/test_docs_contract.py -q
 ```
 
+Windows PowerShell（激活 `.venv` 后）：
+
+```powershell
+python -m pytest -q
+```
+
+<a id="roadmap"></a>
 ## 局限与路线图
 
 当前实现是教学项目：只处理一个 PDF；每次提问都重新嵌入整份文档；没有持久化索引、增量更新、复杂版面解析、表格/图片理解、访问控制、评测集或生产级监控；Top-K 和分块参数是代码级默认值；生成模型可能误读上下文，引用页也不能替代人工核验。不要将它当作医疗、法律、财务或安全决策的唯一依据。
 
 可能的后续路线图是持久化向量索引与缓存、可配置分块/Top-K、表格和 OCR 管线、检索与答案的自动评测、更多 provider，以及面向多文档的元数据过滤。路线图不是已实现功能。
 
+<a id="attribution"></a>
 ## 贡献、归属与许可证
 
 欢迎提交能复现的问题、测试和小而清晰的改动。请先运行测试，并在问题报告中说明操作系统、Python 版本、provider、模型名和完整错误信息（删掉 API key）。
 
-仓库代码与本教程文档由本仓库作者提供，采用 [`MIT License`](LICENSE)。但 `data/dpr-paper.pdf` 是从 [ACL Anthology](https://aclanthology.org/2020.emnlp-main.550/) 下载的论文副本，不因仓库的 MIT 许可证而改变；它及其原始内容按 ACL 页面说明受 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可。论文作者和 ACL 不为本教程背书。论文的完整书目信息、下载地址和 SHA-256 校验值见 [`data/README.md`](data/README.md)。使用论文时请保留作者、论文标题、ACL/EMNLP 出版信息及 CC BY 4.0 归属。
+仓库代码与本教程文档由本仓库作者提供，采用 [MIT License](LICENSE)。但 `data/dpr-paper.pdf` 是从 [ACL Anthology](https://aclanthology.org/2020.emnlp-main.550/) 下载的论文副本，不因仓库的 MIT 许可证而改变；它及其原始内容按 ACL 页面说明受 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可。论文作者和 ACL 不为本教程背书。论文的完整书目信息、下载地址和 SHA-256 校验值见 [`data/README.md`](data/README.md)。使用论文时请保留作者、论文标题、ACL/EMNLP 出版信息及 CC BY 4.0 归属。
 
 本教程的学习起点参考 Xuan-Son Nguyen 的 Hugging Face 文章 [Code a simple RAG from scratch](https://huggingface.co/blog/ngxson/make-your-own-rag)。本仓库独立扩展了 PDF 读取、页码引用、配置、OpenAI-compatible API、测试和中文讲解，没有复制该文章内容。
+
+<a id="troubleshooting"></a>
+## 故障排查
 
 遇到连接、模型、密钥、PDF、OCR 或答案质量问题，请先看 [`docs/troubleshooting.md`](docs/troubleshooting.md)（故障排查）；想理解术语看 [`docs/concepts.md`](docs/concepts.md)，想选模型看 [`docs/model-guide.md`](docs/model-guide.md)。
