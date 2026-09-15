@@ -20,6 +20,11 @@ licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 This 2020 paper is included under that license. The authors and ACL do not
 endorse this tutorial.
 
+The repository's MIT license applies to repository-authored code and
+documentation only. It does not relicense this bundled paper; retain the
+authors, publication, ACL/EMNLP citation, and CC BY 4.0 attribution when
+redistributing the PDF.
+
 SHA-256 for `dpr-paper.pdf`:
 
 ```text
