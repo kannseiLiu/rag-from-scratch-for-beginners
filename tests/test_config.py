@@ -2,8 +2,28 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
+import beginner_pdf_rag.config as config
 from beginner_pdf_rag.config import Settings, SettingsError
 from beginner_pdf_rag.models import Chunk, Page, SearchResult
+
+
+PROVIDER_ENVIRONMENT_VARIABLES = (
+    "RAG_PROVIDER",
+    "OLLAMA_BASE_URL",
+    "OLLAMA_EMBEDDING_MODEL",
+    "OLLAMA_CHAT_MODEL",
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "OPENAI_EMBEDDING_MODEL",
+    "OPENAI_CHAT_MODEL",
+)
+
+
+@pytest.fixture(autouse=True)
+def isolate_provider_environment(monkeypatch):
+    for variable in PROVIDER_ENVIRONMENT_VARIABLES:
+        monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setattr(config, "load_dotenv", lambda: None)
 
 
 def test_models_are_immutable_data_objects():
@@ -16,14 +36,29 @@ def test_models_are_immutable_data_objects():
     assert (result.chunk, result.score) == (chunk, 0.9)
     with pytest.raises(FrozenInstanceError):
         page.text = "Changed"
+    with pytest.raises(FrozenInstanceError):
+        chunk.index = 1
+    with pytest.raises(FrozenInstanceError):
+        result.score = 0.8
 
 
-def test_ollama_defaults_do_not_require_an_api_key(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
-    monkeypatch.delenv("OLLAMA_EMBEDDING_MODEL", raising=False)
-    monkeypatch.delenv("OLLAMA_CHAT_MODEL", raising=False)
+def test_settings_are_immutable():
+    settings = Settings.from_env("ollama")
 
+    with pytest.raises(FrozenInstanceError):
+        settings.provider = "openai"
+
+
+def test_settings_loads_dotenv_in_production(monkeypatch):
+    calls = []
+    monkeypatch.setattr(config, "load_dotenv", lambda: calls.append(True))
+
+    Settings.from_env("ollama")
+
+    assert calls == [True]
+
+
+def test_ollama_defaults_do_not_require_an_api_key():
     settings = Settings.from_env("ollama")
 
     assert settings.provider == "ollama"
