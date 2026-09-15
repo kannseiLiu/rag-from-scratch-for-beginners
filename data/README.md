@@ -3,10 +3,9 @@
 `dpr-paper.pdf` is an unmodified copy downloaded from the ACL Anthology for
 the runnable examples in this repository.
 
-## Citation and source
+## Citation (ACL)
 
-Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey
-Edunov, Danqi Chen, and Wen-tau Yih. 2020. *Dense Passage Retrieval for Open-Domain Question Answering*. In *Proceedings of the 2020 Conference on
+Vladimir Karpukhin, Barlas Oguz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. 2020. *Dense Passage Retrieval for Open-Domain Question Answering*. In *Proceedings of the 2020 Conference on
 Empirical Methods in Natural Language Processing (EMNLP)*, pages 6769–6781,
 Online. Association for Computational Linguistics.
 
