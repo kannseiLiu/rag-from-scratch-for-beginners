@@ -1,7 +1,11 @@
 from types import SimpleNamespace
 
+import httpx
+import ollama
+import openai
 import pytest
 
+import beginner_pdf_rag.providers as providers
 from beginner_pdf_rag.config import Settings
 from beginner_pdf_rag.providers import (
     OllamaEmbedder,
@@ -172,13 +176,58 @@ def test_embedder_rejects_wrong_embedding_count():
         OllamaEmbedder(client, "model").embed(["a", "b"])
 
 
-class MissingOllamaModelError(Exception):
-    status_code = 404
+@pytest.mark.parametrize(
+    "adapter",
+    [
+        OllamaEmbedder(FakeOllamaClient(embeddings=[[1.0, 0.0], [1.0]]), "model"),
+        OpenAIEmbedder(FakeOpenAIClient(embeddings=[[1.0, 0.0], [1.0]]), "model"),
+    ],
+)
+def test_embedders_reject_ragged_batches(adapter):
+    with pytest.raises(ValueError, match="same dimension"):
+        adapter.embed(["a", "b"])
+
+
+@pytest.mark.parametrize(
+    "embedding",
+    [[1.0, object()], [1.0, float("nan")], [1.0, float("inf")]],
+)
+def test_embedder_rejects_nonnumeric_and_nonfinite_vectors(embedding):
+    client = FakeOllamaClient(embeddings=[embedding])
+
+    with pytest.raises(ValueError, match="invalid|non-finite"):
+        OllamaEmbedder(client, "model").embed(["a"])
+
+
+def test_openai_embedder_rejects_wrong_embedding_count():
+    client = FakeOpenAIClient(embeddings=[[1.0, 0.0]])
+
+    with pytest.raises(ValueError, match="count"):
+        OpenAIEmbedder(client, "model").embed(["a", "b"])
+
+
+@pytest.mark.parametrize(
+    "indexes",
+    [["zero", 1], [0, 0]],
+)
+def test_openai_embedder_rejects_invalid_or_duplicate_indexes(indexes):
+    client = FakeOpenAIClient()
+    client.embeddings.create = lambda **kwargs: SimpleNamespace(
+        data=[
+            SimpleNamespace(index=indexes[0], embedding=[1.0, 0.0]),
+            SimpleNamespace(index=indexes[1], embedding=[0.0, 1.0]),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="indexes"):
+        OpenAIEmbedder(client, "model").embed(["a", "b"])
 
 
 def test_ollama_errors_explain_starting_service_or_pulling_model():
     connection_client = FakeOllamaClient(error=ConnectionError("private request text"))
-    missing_model_client = FakeOllamaClient(error=MissingOllamaModelError("private request text"))
+    missing_model_client = FakeOllamaClient(
+        error=ollama.ResponseError("private request text", status_code=404)
+    )
 
     with pytest.raises(RuntimeError, match="Start Ollama") as connection_error:
         OllamaEmbedder(connection_client, "nomic-embed-text").embed(["a"])
@@ -189,11 +238,111 @@ def test_ollama_errors_explain_starting_service_or_pulling_model():
     assert "private request text" not in str(model_error.value)
 
 
-def test_openai_connection_error_is_safe_and_actionable():
-    client = FakeOpenAIClient(error=ConnectionError("secret-key and private request text"))
+def test_ollama_response_error_is_safe_and_actionable():
+    client = FakeOllamaClient(
+        error=ollama.ResponseError("private request text", status_code=500)
+    )
+
+    with pytest.raises(RuntimeError, match="Ollama request failed") as error:
+        OllamaEmbedder(client, "model").embed(["a"])
+
+    assert "private request text" not in str(error.value)
+
+
+def test_ollama_programming_errors_propagate():
+    client = FakeOllamaClient(error=TypeError("client bug"))
+
+    with pytest.raises(TypeError, match="client bug"):
+        OllamaEmbedder(client, "model").embed(["a"])
+
+
+def _response_error(error_type, status_code):
+    request = httpx.Request("POST", "https://api.example.test/v1/responses")
+    response = httpx.Response(status_code, request=request)
+    return error_type("secret-key and private request text", response=response, body={})
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        openai.APIConnectionError(
+            message="secret-key and private request text",
+            request=httpx.Request("POST", "https://api.example.test/v1/embeddings"),
+        ),
+        _response_error(openai.AuthenticationError, 401),
+        _response_error(openai.RateLimitError, 429),
+        _response_error(openai.APIStatusError, 500),
+    ],
+)
+def test_openai_sdk_errors_are_safe_and_actionable(error):
+    client = FakeOpenAIClient(error=error)
 
     with pytest.raises(RuntimeError, match="check API configuration") as error:
         OpenAIEmbedder(client, "model").embed(["a"])
 
     assert "secret-key" not in str(error.value)
     assert "private request text" not in str(error.value)
+
+
+def test_openai_programming_errors_propagate():
+    client = FakeOpenAIClient(error=AttributeError("client bug"))
+
+    with pytest.raises(AttributeError, match="client bug"):
+        OpenAIEmbedder(client, "model").embed(["a"])
+
+
+def test_build_providers_uses_exact_factory_arguments(monkeypatch):
+    ollama_calls = []
+    openai_calls = []
+    ollama_client = object()
+    openai_client = object()
+    monkeypatch.setattr(
+        providers.ollama,
+        "Client",
+        lambda **kwargs: ollama_calls.append(kwargs) or ollama_client,
+    )
+    monkeypatch.setattr(
+        providers,
+        "OpenAI",
+        lambda **kwargs: openai_calls.append(kwargs) or openai_client,
+    )
+    ollama_settings = Settings(
+        provider="ollama",
+        ollama_base_url="http://ollama.test:11434",
+        embedding_model="ollama-embed",
+        chat_model="ollama-chat",
+        openai_api_key=None,
+        openai_base_url="https://api.example.test/v1",
+    )
+    openai_settings = Settings(
+        provider="openai",
+        ollama_base_url="http://ollama.test:11434",
+        embedding_model="openai-embed",
+        chat_model="openai-chat",
+        openai_api_key="secret-key",
+        openai_base_url="https://api.example.test/v1",
+    )
+
+    ollama_embedder, ollama_generator = build_providers(ollama_settings)
+    openai_embedder, openai_generator = build_providers(openai_settings)
+
+    assert ollama_calls == [{"host": "http://ollama.test:11434"}]
+    assert openai_calls == [
+        {"api_key": "secret-key", "base_url": "https://api.example.test/v1"}
+    ]
+    assert (ollama_embedder._client, ollama_embedder._model) == (
+        ollama_client,
+        "ollama-embed",
+    )
+    assert (ollama_generator._client, ollama_generator._model) == (
+        ollama_client,
+        "ollama-chat",
+    )
+    assert (openai_embedder._client, openai_embedder._model) == (
+        openai_client,
+        "openai-embed",
+    )
+    assert (openai_generator._client, openai_generator._model) == (
+        openai_client,
+        "openai-chat",
+    )

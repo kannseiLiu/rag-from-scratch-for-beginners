@@ -5,6 +5,7 @@ from math import isfinite
 from typing import Any, Protocol
 
 import ollama
+import openai
 from openai import OpenAI
 
 from beginner_pdf_rag.config import Settings
@@ -23,6 +24,12 @@ _GROUNDED_INSTRUCTIONS = (
     "If the context does not support an answer, say exactly: "
     "I cannot find this information in the document. "
     "When the context supports an answer, cite the supporting page as [Page N]."
+)
+_OPENAI_PROVIDER_ERRORS = (
+    openai.APIConnectionError,
+    openai.AuthenticationError,
+    openai.RateLimitError,
+    openai.APIStatusError,
 )
 
 
@@ -70,23 +77,26 @@ def _normalize_embeddings(
 
     items = list(data)
     if field == "embeddings":
-        return [_normalize_vector(item, provider) for item in items]
+        vectors = [_normalize_vector(item, provider) for item in items]
+    else:
+        indexes = [_field(item, "index") for item in items]
+        if any(index is not None for index in indexes):
+            if (
+                any(not isinstance(index, int) or isinstance(index, bool) for index in indexes)
+                or set(indexes) != set(range(expected_count))
+            ):
+                raise ValueError(f"{provider} returned invalid embedding indexes.")
+            items = [item for _, item in sorted(zip(indexes, items, strict=True))]
 
-    indexes = [_field(item, "index") for item in items]
-    if any(index is not None for index in indexes):
-        if (
-            any(not isinstance(index, int) or isinstance(index, bool) for index in indexes)
-            or set(indexes) != set(range(expected_count))
-        ):
-            raise ValueError(f"{provider} returned invalid embedding indexes.")
-        items = [item for _, item in sorted(zip(indexes, items, strict=True))]
+        vectors = [_normalize_vector(_field(item, "embedding"), provider) for item in items]
 
-    vectors = [_normalize_vector(_field(item, "embedding"), provider) for item in items]
+    if len({len(vector) for vector in vectors}) != 1:
+        raise ValueError(f"{provider} returned embeddings without the same dimension.")
     return vectors
 
 
-def _ollama_error(error: Exception, model: str) -> RuntimeError:
-    if _field(error, "status_code") == 404:
+def _ollama_error(error: ConnectionError | ollama.ResponseError, model: str) -> RuntimeError:
+    if isinstance(error, ollama.ResponseError) and error.status_code == 404:
         return RuntimeError(
             f"Ollama model {model!r} is unavailable. Run `ollama pull {model}`."
         )
@@ -116,7 +126,7 @@ class OllamaEmbedder:
         values = _require_texts(texts)
         try:
             response = self._client.embed(model=self._model, input=values)
-        except Exception as error:
+        except (ConnectionError, ollama.ResponseError) as error:
             raise _ollama_error(error, self._model) from None
         return _normalize_embeddings(response, "embeddings", len(values), "Ollama")
 
@@ -141,7 +151,7 @@ class OllamaGenerator:
                 ],
                 stream=False,
             )
-        except Exception as error:
+        except (ConnectionError, ollama.ResponseError) as error:
             raise _ollama_error(error, self._model) from None
         return _normalize_text(_field(_field(response, "message"), "content"), "Ollama")
 
@@ -155,7 +165,7 @@ class OpenAIEmbedder:
         values = _require_texts(texts)
         try:
             response = self._client.embeddings.create(model=self._model, input=values)
-        except Exception:
+        except _OPENAI_PROVIDER_ERRORS:
             raise _openai_error() from None
         return _normalize_embeddings(response, "data", len(values), "OpenAI")
 
@@ -174,7 +184,7 @@ class OpenAIGenerator:
                 instructions=_GROUNDED_INSTRUCTIONS,
                 input=f"Context:\n{context}\n\nQuestion:\n{question}",
             )
-        except Exception:
+        except _OPENAI_PROVIDER_ERRORS:
             raise _openai_error() from None
         return _normalize_text(_field(response, "output_text"), "OpenAI")
 
