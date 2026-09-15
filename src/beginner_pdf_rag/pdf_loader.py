@@ -37,7 +37,7 @@ def load_pdf(path: str | Path) -> list[Page]:
         ) from None
     except PyPdfError:
         raise PdfLoadError(
-            "Could not parse the PDF. Check that it is not corrupted and try again."
+            "Could not parse the PDF. Please re-download it or use an uncorrupted copy."
         ) from None
 
     if not any(page.text for page in pages):

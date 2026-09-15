@@ -24,7 +24,19 @@ def test_chunks_skip_blank_pages_and_restart_indexes_per_page():
     ]
 
 
-@pytest.mark.parametrize("chunk_size,overlap", [(0, 0), (10, -1), (10, 10), (10, 11)])
+@pytest.mark.parametrize(
+    "chunk_size,overlap",
+    [
+        (0, 0),
+        (10, -1),
+        (10, 10),
+        (10, 11),
+        (True, 0),
+        (10, False),
+        (10.5, 0),
+        (10, 2.5),
+    ],
+)
 def test_invalid_chunk_parameters_are_rejected(chunk_size, overlap):
     with pytest.raises(ValueError):
         chunk_pages([Page(1, "text")], chunk_size, overlap)

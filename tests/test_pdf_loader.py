@@ -51,3 +51,13 @@ def test_encrypted_pdf_instructs_the_user_to_remove_its_password(tmp_path):
 
     with pytest.raises(PdfLoadError, match="password"):
         load_pdf(path)
+
+
+def test_corrupt_pdf_instructs_the_user_to_redownload_without_a_traceback(tmp_path):
+    path = tmp_path / "corrupt.pdf"
+    path.write_bytes(b"not a valid PDF")
+
+    with pytest.raises(PdfLoadError, match="re-download") as error:
+        load_pdf(path)
+
+    assert "Traceback" not in str(error.value)

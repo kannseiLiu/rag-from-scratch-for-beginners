@@ -9,6 +9,10 @@ def chunk_pages(
     pages: Sequence[Page], chunk_size: int = 1200, overlap: int = 200
 ) -> list[Chunk]:
     """Split nonblank page text into separately indexed overlapping chunks."""
+    if isinstance(chunk_size, bool) or not isinstance(chunk_size, int):
+        raise ValueError("chunk_size must be an integer greater than zero")
+    if isinstance(overlap, bool) or not isinstance(overlap, int):
+        raise ValueError("overlap must be an integer smaller than chunk_size")
     if chunk_size <= 0:
         raise ValueError("chunk_size must be greater than zero")
     if overlap < 0 or overlap >= chunk_size:
