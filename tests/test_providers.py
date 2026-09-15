@@ -12,6 +12,7 @@ from beginner_pdf_rag.providers import (
     OllamaGenerator,
     OpenAIEmbedder,
     OpenAIGenerator,
+    ProviderError,
     build_providers,
 )
 
@@ -229,9 +230,9 @@ def test_ollama_errors_explain_starting_service_or_pulling_model():
         error=ollama.ResponseError("private request text", status_code=404)
     )
 
-    with pytest.raises(RuntimeError, match="Start Ollama") as connection_error:
+    with pytest.raises(ProviderError, match="Start Ollama") as connection_error:
         OllamaEmbedder(connection_client, "nomic-embed-text").embed(["a"])
-    with pytest.raises(RuntimeError, match="ollama pull nomic-embed-text") as model_error:
+    with pytest.raises(ProviderError, match="ollama pull nomic-embed-text") as model_error:
         OllamaEmbedder(missing_model_client, "nomic-embed-text").embed(["a"])
 
     assert "private request text" not in str(connection_error.value)
@@ -243,7 +244,7 @@ def test_ollama_response_error_is_safe_and_actionable():
         error=ollama.ResponseError("private request text", status_code=500)
     )
 
-    with pytest.raises(RuntimeError, match="Ollama request failed") as error:
+    with pytest.raises(ProviderError, match="Ollama request failed") as error:
         OllamaEmbedder(client, "model").embed(["a"])
 
     assert "private request text" not in str(error.value)
@@ -277,7 +278,7 @@ def _response_error(error_type, status_code):
 def test_openai_sdk_errors_are_safe_and_actionable(error):
     client = FakeOpenAIClient(error=error)
 
-    with pytest.raises(RuntimeError, match="check API configuration") as error:
+    with pytest.raises(ProviderError, match="check API configuration") as error:
         OpenAIEmbedder(client, "model").embed(["a"])
 
     assert "secret-key" not in str(error.value)

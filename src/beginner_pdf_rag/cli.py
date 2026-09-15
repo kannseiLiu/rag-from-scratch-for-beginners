@@ -4,11 +4,14 @@ import argparse
 import os
 import sys
 from collections.abc import Sequence
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 from beginner_pdf_rag.config import Settings, SettingsError
 from beginner_pdf_rag.pdf_loader import PdfLoadError
 from beginner_pdf_rag.pipeline import PdfRag, RagError
-from beginner_pdf_rag.providers import build_providers
+from beginner_pdf_rag.providers import ProviderError, build_providers
 
 
 def _positive_int(value: str) -> int:
@@ -29,7 +32,11 @@ def _parser() -> argparse.ArgumentParser:
     ask = commands.add_parser("ask", help="index a PDF and ask one question")
     ask.add_argument("--pdf", required=True, metavar="PATH")
     ask.add_argument("--question", required=True, metavar="TEXT")
-    ask.add_argument("--provider", default=os.getenv("RAG_PROVIDER", "ollama"))
+    ask.add_argument(
+        "--provider",
+        choices=("ollama", "openai"),
+        default=os.getenv("RAG_PROVIDER", "ollama"),
+    )
     ask.add_argument("--top-k", type=_positive_int, default=3, metavar="N")
     ask.add_argument("--show-sources", action="store_true")
     return parser
@@ -45,6 +52,7 @@ def _print_sources(answer_sources: Sequence) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the ``pdf-rag ask`` command and return its shell status."""
+    load_dotenv(Path.cwd() / ".env")
     args = _parser().parse_args(argv)
     try:
         settings = Settings.from_env(args.provider)
@@ -52,7 +60,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         rag = PdfRag(embedder, generator)
         chunk_count = rag.index(args.pdf)
         answer = rag.ask(args.question, args.top_k)
-    except (SettingsError, PdfLoadError, RagError, RuntimeError) as error:
+    except (SettingsError, PdfLoadError, RagError, ProviderError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
 

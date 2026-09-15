@@ -19,6 +19,10 @@ class Generator(Protocol):
     def generate(self, question: str, context: str) -> str: ...
 
 
+class ProviderError(RuntimeError):
+    """Raised for safe, actionable failures from a model provider."""
+
+
 _GROUNDED_INSTRUCTIONS = (
     "Answer the question using ONLY the provided document context. "
     "If the context does not support an answer, say exactly: "
@@ -95,20 +99,22 @@ def _normalize_embeddings(
     return vectors
 
 
-def _ollama_error(error: ConnectionError | ollama.ResponseError, model: str) -> RuntimeError:
+def _ollama_error(
+    error: ConnectionError | ollama.ResponseError, model: str
+) -> ProviderError:
     if isinstance(error, ollama.ResponseError) and error.status_code == 404:
-        return RuntimeError(
+        return ProviderError(
             f"Ollama model {model!r} is unavailable. Run `ollama pull {model}`."
         )
     if isinstance(error, (ConnectionError, OSError)):
-        return RuntimeError("Cannot connect to Ollama. Start Ollama and try again.")
-    return RuntimeError(
+        return ProviderError("Cannot connect to Ollama. Start Ollama and try again.")
+    return ProviderError(
         "Ollama request failed. Start Ollama and confirm the selected model is installed."
     )
 
 
-def _openai_error() -> RuntimeError:
-    return RuntimeError("OpenAI request failed; check API configuration and try again.")
+def _openai_error() -> ProviderError:
+    return ProviderError("OpenAI request failed; check API configuration and try again.")
 
 
 def _normalize_text(value: Any, provider: str) -> str:

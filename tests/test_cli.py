@@ -107,8 +107,80 @@ def test_cli_uses_rag_provider_when_present(monkeypatch, capsys):
     assert "Grounded answer" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("provider", ["openai", "invalid"])
-def test_cli_prints_expected_provider_errors_without_tracebacks(monkeypatch, capsys, provider):
+def test_cli_loads_rag_provider_from_dotenv_before_selecting_the_default(
+    monkeypatch, tmp_path, capsys
+):
+    from beginner_pdf_rag import cli
+
+    selected_providers = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("RAG_PROVIDER", raising=False)
+    (tmp_path / ".env").write_text("RAG_PROVIDER=openai\n")
+    monkeypatch.setattr(
+        cli.Settings,
+        "from_env",
+        lambda provider: selected_providers.append(provider) or object(),
+    )
+    monkeypatch.setattr(cli, "build_providers", lambda settings: (object(), object()))
+
+    class FakeRag:
+        def __init__(self, embedder, generator):
+            pass
+
+        def index(self, pdf):
+            return 1
+
+        def ask(self, question, top_k):
+            return FakeAnswer("Grounded answer", ())
+
+    monkeypatch.setattr(cli, "PdfRag", FakeRag)
+
+    assert cli.main(["ask", "--pdf", "paper.pdf", "--question", "What changed?"]) == 0
+    assert selected_providers == ["openai"]
+    assert "openai" not in capsys.readouterr().out
+
+
+def test_cli_explicit_provider_overrides_dotenv_default(monkeypatch, tmp_path):
+    from beginner_pdf_rag import cli
+
+    selected_providers = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("RAG_PROVIDER", raising=False)
+    (tmp_path / ".env").write_text("RAG_PROVIDER=openai\n")
+    monkeypatch.setattr(
+        cli.Settings,
+        "from_env",
+        lambda provider: selected_providers.append(provider) or object(),
+    )
+    monkeypatch.setattr(cli, "build_providers", lambda settings: (object(), object()))
+
+    class FakeRag:
+        def __init__(self, embedder, generator):
+            pass
+
+        def index(self, pdf):
+            return 1
+
+        def ask(self, question, top_k):
+            return FakeAnswer("Grounded answer", ())
+
+    monkeypatch.setattr(cli, "PdfRag", FakeRag)
+
+    assert cli.main(
+        [
+            "ask",
+            "--pdf",
+            "paper.pdf",
+            "--question",
+            "What changed?",
+            "--provider",
+            "ollama",
+        ]
+    ) == 0
+    assert selected_providers == ["ollama"]
+
+
+def test_cli_prints_expected_settings_errors_without_tracebacks(monkeypatch, capsys):
     from beginner_pdf_rag import cli
     from beginner_pdf_rag.config import SettingsError
 
@@ -119,12 +191,64 @@ def test_cli_prints_expected_provider_errors_without_tracebacks(monkeypatch, cap
     )
 
     assert cli.main(
-        ["ask", "--pdf", "paper.pdf", "--question", "What changed?", "--provider", provider]
+        ["ask", "--pdf", "paper.pdf", "--question", "What changed?", "--provider", "openai"]
     ) == 1
 
     error = capsys.readouterr().err
     assert "Set up the provider." in error
     assert "Traceback" not in error
+
+
+def test_cli_prints_safe_provider_errors_without_tracebacks(monkeypatch, capsys):
+    from beginner_pdf_rag import cli
+    from beginner_pdf_rag.providers import ProviderError
+
+    monkeypatch.setattr(cli.Settings, "from_env", lambda provider: object())
+    monkeypatch.setattr(
+        cli,
+        "build_providers",
+        lambda settings: (_ for _ in ()).throw(ProviderError("Start Ollama and try again.")),
+    )
+
+    assert cli.main(["ask", "--pdf", "paper.pdf", "--question", "What changed?"]) == 1
+
+    error = capsys.readouterr().err
+    assert "Start Ollama" in error
+    assert "Traceback" not in error
+
+
+def test_cli_propagates_unexpected_runtime_errors(monkeypatch):
+    from beginner_pdf_rag import cli
+
+    monkeypatch.setattr(cli.Settings, "from_env", lambda provider: object())
+    monkeypatch.setattr(
+        cli,
+        "build_providers",
+        lambda settings: (_ for _ in ()).throw(RuntimeError("programming error")),
+    )
+
+    with pytest.raises(RuntimeError, match="programming error"):
+        cli.main(["ask", "--pdf", "paper.pdf", "--question", "What changed?"])
+
+
+def test_cli_rejects_unknown_provider_with_argparse_help(capsys):
+    from beginner_pdf_rag import cli
+
+    with pytest.raises(SystemExit) as error:
+        cli.main(
+            [
+                "ask",
+                "--pdf",
+                "paper.pdf",
+                "--question",
+                "What changed?",
+                "--provider",
+                "invalid",
+            ]
+        )
+
+    assert error.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
 
 
 def test_cli_prints_pdf_errors_without_tracebacks(monkeypatch, capsys):
