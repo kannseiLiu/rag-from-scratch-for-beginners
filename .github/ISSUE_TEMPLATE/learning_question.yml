@@ -1,0 +1,58 @@
+name: 学习问题
+description: 说明教程的哪一步不清楚，以及你已经尝试了什么
+title: "[学习问题] "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        欢迎提问。请描述卡住的具体步骤，但不要粘贴 API key、`.env` 内容或私人 PDF 原文。
+
+  - type: dropdown
+    id: tutorial_step
+    attributes:
+      label: 教程的哪一步不清楚？
+      options:
+        - 创建 Python 环境与安装依赖
+        - 安装、启动 Ollama 或下载模型
+        - 运行第一个 PDF 问答
+        - 理解 PDF 读取与切块
+        - 理解 Embedding、余弦相似度与 Top-K
+        - 理解页码引用与回答
+        - 切换 OpenAI-compatible API
+        - 替换自己的 PDF 或处理扫描件
+        - 运行测试
+        - 其他文档步骤
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: 具体问题
+      description: 哪句话、哪个命令或哪个概念让你困惑？
+    validations:
+      required: true
+
+  - type: textarea
+    id: attempted
+    attributes:
+      label: 已尝试的方法
+      description: 请列出你已经阅读的章节、运行的命令和看到的安全输出。
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 相关环境（可选）
+      description: 如与运行有关，可写操作系统、Python 版本、provider 和模型名；不要填写密钥。
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私确认
+      options:
+        - label: 我没有粘贴 API key、`.env` 内容或私人 PDF 原文。
+          required: true

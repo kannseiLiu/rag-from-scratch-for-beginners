@@ -1,0 +1,81 @@
+name: Bug 报告
+description: 报告可以稳定复现的程序错误
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。提交前请删除 API key、`.env` 内容和私人 PDF 原文；错误信息中如有文件路径、姓名或公司信息，也请先打码。
+
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统
+      description: 例如 macOS 15、Ubuntu 24.04 或 Windows 11。
+    validations:
+      required: true
+
+  - type: input
+    id: python_version
+    attributes:
+      label: Python 版本
+      description: 请粘贴 `python --version` 的安全输出。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - Ollama
+        - OpenAI-compatible API
+    validations:
+      required: true
+
+  - type: input
+    id: model_names
+    attributes:
+      label: 模型名称
+      description: 只写模型名，例如 nomic-embed-text 和 qwen3:4b；不要填写密钥。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从安装或运行的哪条命令开始，按顺序列出最小复现步骤。
+      placeholder: |
+        1. 执行……
+        2. 提问……
+        3. 看到……
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: 完整错误信息（已脱敏）
+      description: 请粘贴准确错误，而不是只写“不能运行”；先移除 API key、私人 PDF 原文、用户名和本机绝对路径。
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+      description: 你原本期望程序做什么？
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私确认
+      options:
+        - label: 我已删除 API key、`.env` 内容和私人 PDF 原文，并为其他个人信息打码。
+          required: true
