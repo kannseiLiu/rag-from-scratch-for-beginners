@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import re
+import os
+import stat
+import subprocess
 import tomllib
 from pathlib import Path
 
@@ -37,6 +40,89 @@ def _env_values() -> dict[str, str]:
 def test_required_documentation_files_exist() -> None:
     for path in ("README.md", "docs/concepts.md", "docs/model-guide.md", "docs/troubleshooting.md", "LICENSE"):
         assert (ROOT / path).is_file(), path
+
+
+def test_ollama_smoke_script_requires_ollama(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+
+    result = subprocess.run(
+        ["bash", str(ROOT / "scripts/smoke_ollama.sh")],
+        cwd=ROOT,
+        env={"PATH": f"{fake_bin}:/usr/bin:/bin"},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "Ollama is not installed" in result.stderr
+
+
+def test_ollama_smoke_script_requires_running_daemon(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "ollama").write_text(
+        "#!/usr/bin/env bash\n"
+        "if [ \"$1\" = --version ]; then echo 'ollama version 0.0.0'; fi\n"
+        "if [ \"$1\" = list ]; then echo 'NAME ID SIZE MODIFIED'; fi\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "curl").write_text("#!/usr/bin/env bash\nexit 7\n", encoding="utf-8")
+    for command in ("ollama", "curl"):
+        os.chmod(fake_bin / command, 0o755)
+
+    result = subprocess.run(
+        ["bash", str(ROOT / "scripts/smoke_ollama.sh")],
+        cwd=ROOT,
+        env={"PATH": f"{fake_bin}:/usr/bin:/bin"},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "Ollama daemon is not reachable" in result.stderr
+
+
+def test_ollama_smoke_script_refuses_missing_models_without_pulling(tmp_path: Path) -> None:
+    script = ROOT / "scripts/smoke_ollama.sh"
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls"
+    (fake_bin / "ollama").write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$*\" >> \"$SMOKE_CALLS\"\n"
+        "if [ \"$1\" = show ]; then exit 1; fi\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "curl").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    for command in ("ollama", "curl"):
+        os.chmod(fake_bin / command, 0o755)
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=ROOT,
+        env={"PATH": f"{fake_bin}:{os.environ['PATH']}", "SMOKE_CALLS": str(calls)},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "ollama pull nomic-embed-text" in result.stderr
+    assert calls.read_text(encoding="utf-8").splitlines() == ["--version", "list", "show nomic-embed-text"]
+
+
+def test_ollama_smoke_script_is_executable_and_shell_safe() -> None:
+    script = ROOT / "scripts/smoke_ollama.sh"
+    assert script.stat().st_mode & stat.S_IXUSR
+    syntax = subprocess.run(["bash", "-n", str(script)], check=False)
+    assert syntax.returncode == 0
+    source = script.read_text(encoding="utf-8")
+    assert "set -euo pipefail" in source
+    assert "ollama pull" in source
+    assert "eval " not in source
 
 
 def test_quick_start_blocks_are_exact_and_platform_specific() -> None:
