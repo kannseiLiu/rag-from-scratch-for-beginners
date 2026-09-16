@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import os
+import shutil
 import stat
 import subprocess
 import tomllib
@@ -112,6 +113,88 @@ def test_ollama_smoke_script_refuses_missing_models_without_pulling(tmp_path: Pa
     assert result.returncode != 0
     assert "ollama pull nomic-embed-text" in result.stderr
     assert calls.read_text(encoding="utf-8").splitlines() == ["--version", "list", "show nomic-embed-text"]
+
+
+def test_ollama_smoke_script_forces_documented_config_and_reaches_cli(tmp_path: Path) -> None:
+    isolated_root = tmp_path / "repo"
+    (isolated_root / "scripts").mkdir(parents=True)
+    script = isolated_root / "scripts/smoke_ollama.sh"
+    shutil.copy2(ROOT / "scripts/smoke_ollama.sh", script)
+    (isolated_root / ".env").write_text(
+        "RAG_PROVIDER=openai\n"
+        "OLLAMA_BASE_URL=https://hostile-env.invalid/v1\n"
+        "OLLAMA_EMBEDDING_MODEL=hostile-env-embedding\n"
+        "OLLAMA_CHAT_MODEL=hostile-env-chat\n",
+        encoding="utf-8",
+    )
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "calls"
+    pull_calls = tmp_path / "pull-calls"
+    result_file = tmp_path / "result"
+    (fake_bin / "ollama").write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$*\" >> \"$SMOKE_CALLS\"\n"
+        "case \"$1\" in\n"
+        "  --version) echo 'ollama version 0.32.15' ;;\n"
+        "  list) echo 'NAME ID SIZE MODIFIED' ;;\n"
+        "  show) case \"$2\" in nomic-embed-text|qwen3:4b) exit 0 ;; *) exit 42 ;; esac ;;\n"
+        "  pull) printf '%s\\n' \"$*\" >> \"$SMOKE_PULL_CALLS\"; exit 99 ;;\n"
+        "  *) exit 42 ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "curl").write_text(
+        "#!/usr/bin/env bash\n"
+        "[ \"${@: -1}\" = 'http://127.0.0.1:11434/api/tags' ]\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "pdf-rag").write_text(
+        "#!/usr/bin/env bash\n"
+        "printf 'RAG_PROVIDER=%s\\nOLLAMA_BASE_URL=%s\\nOLLAMA_EMBEDDING_MODEL=%s\\nOLLAMA_CHAT_MODEL=%s\\nARGS=%s\\n' \"$RAG_PROVIDER\" \"$OLLAMA_BASE_URL\" \"$OLLAMA_EMBEDDING_MODEL\" \"$OLLAMA_CHAT_MODEL\" \"$*\" > \"$SMOKE_RESULT\"\n",
+        encoding="utf-8",
+    )
+    for command in ("ollama", "curl", "pdf-rag"):
+        os.chmod(fake_bin / command, 0o755)
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "PATH": f"{fake_bin}{os.pathsep}{env['PATH']}",
+            "SMOKE_CALLS": str(calls),
+            "SMOKE_PULL_CALLS": str(pull_calls),
+            "SMOKE_RESULT": str(result_file),
+            "RAG_PROVIDER": "openai",
+            "OLLAMA_BASE_URL": "https://caller.invalid/v1",
+            "OLLAMA_EMBEDDING_MODEL": "caller-embedding",
+            "OLLAMA_CHAT_MODEL": "caller-chat",
+        }
+    )
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not pull_calls.exists()
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        "--version",
+        "list",
+        "show nomic-embed-text",
+        "show qwen3:4b",
+    ]
+    assert result_file.read_text(encoding="utf-8") == (
+        "RAG_PROVIDER=ollama\n"
+        "OLLAMA_BASE_URL=http://127.0.0.1:11434\n"
+        "OLLAMA_EMBEDDING_MODEL=nomic-embed-text\n"
+        "OLLAMA_CHAT_MODEL=qwen3:4b\n"
+        "ARGS=ask --pdf data/dpr-paper.pdf --question What datasets are used to evaluate DPR? --provider ollama --top-k 3 --show-sources\n"
+    )
 
 
 def test_ollama_smoke_script_is_executable_and_shell_safe() -> None:
