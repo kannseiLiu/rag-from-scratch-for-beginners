@@ -71,7 +71,7 @@ if ! awk -F'|' '
   in_table && NF >= 2 {
     score = $2
     gsub(/^[[:space:]]+|[[:space:]]+$/, "", score)
-    if (score ~ /^[-+]?[0-9]+([.][0-9]+)?([eE][-+]?[0-9]+)?$/) valid = 1
+    if (score ~ /^[-+]?[0-9]+([.][0-9]+)?([eE][-+]?[0-9]+)?$/ && score + 0 >= -1 && score + 0 <= 1) valid = 1
   }
   END { exit(valid ? 0 : 1) }
 ' "$smoke_output"; then

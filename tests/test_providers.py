@@ -281,6 +281,13 @@ def test_ollama_programming_errors_propagate():
         OllamaEmbedder(client, "model").embed(["a"])
 
 
+def test_ollama_os_errors_other_than_connection_errors_propagate():
+    client = FakeOllamaClient(error=PermissionError("client bug"))
+
+    with pytest.raises(PermissionError, match="client bug"):
+        OllamaEmbedder(client, "model").embed(["a"])
+
+
 def _response_error(error_type, status_code):
     request = httpx.Request("POST", "https://api.example.test/v1/responses")
     response = httpx.Response(status_code, request=request)

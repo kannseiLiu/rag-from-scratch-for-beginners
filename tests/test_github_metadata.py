@@ -2,6 +2,7 @@
 
 import re
 import subprocess
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -180,3 +181,11 @@ def test_pdf_files_are_marked_binary_for_git_diff() -> None:
         "data/dpr-paper.pdf: diff: unset",
         "tests/fixtures/two-pages.pdf: diff: unset",
     ]
+
+
+def test_test_extra_contains_documented_maintenance_tools() -> None:
+    project = tomllib.loads(_read("pyproject.toml"))
+    requirements = project["project"]["optional-dependencies"]["test"]
+
+    assert any(requirement.startswith("PyYAML") for requirement in requirements)
+    assert any(requirement.startswith("build") for requirement in requirements)

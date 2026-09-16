@@ -16,7 +16,7 @@ pdf-rag --help
 python -m pytest -q
 ```
 
-新环境应使用 Python 3.11 或更高版本；`.[test]` 会安装测试所需的 PyYAML 和直接运行时依赖，包括 `httpx`。
+新环境应使用 Python 3.11 或更高版本；`.[test]` 会安装测试所需的 PyYAML、构建工具 `build` 和直接运行时依赖，包括 `httpx`。
 
 ### 真实服务状态
 
@@ -31,7 +31,7 @@ ollama show qwen3:4b
 bash scripts/smoke_ollama.sh
 ```
 
-脚本固定使用 `http://127.0.0.1:11434`、`nomic-embed-text` 和 `qwen3:4b`，只检查模型是否存在，不会自动执行 `ollama pull`。
+脚本固定使用 `http://127.0.0.1:11434`、`nomic-embed-text` 和 `qwen3:4b`。预检查只确认模型已经存在，不会自动执行 `ollama pull`；随后会运行完整的 `pdf-rag ask` 冒烟流程并验证答案、页码引用和 Sources 分数。
 
 ### OpenAI-compatible 缺少密钥路径
 
@@ -68,16 +68,16 @@ pdf-rag ask \
 
 ```sh
 python3 -m pytest -q tests/test_docs_contract.py
-# 19 passed
+# 20 passed
 
 python3 -m pytest -q tests/test_docs_contract.py tests/test_github_metadata.py tests/test_providers.py
-# 63 passed
+# 66 passed
 
 bash -n scripts/smoke_ollama.sh
 # exit code 0
 
 python3 -m pytest -q
-# 135 passed
+# 138 passed
 
 python3 -m compileall -q src examples legacy
 # exit code 0
@@ -90,8 +90,7 @@ git diff --check
 # exit code 0
 
 git status --short
-# expected changes: .gitattributes, .gitignore, docs/verification.md,
-# pyproject.toml, providers.py, smoke_ollama.sh, and their focused tests
+# no output after commit
 ```
 
 `python3 -m build` 在检查成功后产生的 `dist/` 仅包含 sdist 与 wheel，随后移出工作树；只保留上述预期的脚本、文档和契约测试改动，供提交。

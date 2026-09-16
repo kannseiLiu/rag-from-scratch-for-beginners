@@ -208,6 +208,7 @@ def test_ollama_smoke_script_forces_documented_config_and_reaches_cli(tmp_path: 
         "Indexed 61 chunks.\nDPR evaluates several datasets.\n\nSources\nPage | Score\n---- | -----\n6 | 0.674\n",
         "Indexed 61 chunks.\nDPR evaluates several datasets. [Page 6]\n\nSources\nPage | Score\n---- | -----\n6 | NaN\n",
         "Indexed 61 chunks.\nDPR evaluates several datasets. [Page 6]\n\nSources\nPage | Score\n---- | -----\n6 | inf\n",
+        "Indexed 61 chunks.\nDPR evaluates several datasets. [Page 6]\n\nSources\nPage | Score\n---- | -----\n6 | 1e999\n",
     ),
 )
 def test_ollama_smoke_script_rejects_invalid_cli_output(tmp_path: Path, cli_output: str) -> None:
