@@ -10,6 +10,8 @@ import subprocess
 import tomllib
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).parents[1]
 CANONICAL_REPO = "https://github.com/kannseiLiu/rag-from-scratch-for-beginners.git"
@@ -152,7 +154,8 @@ def test_ollama_smoke_script_forces_documented_config_and_reaches_cli(tmp_path: 
     )
     (fake_bin / "pdf-rag").write_text(
         "#!/usr/bin/env bash\n"
-        "printf 'RAG_PROVIDER=%s\\nOLLAMA_BASE_URL=%s\\nOLLAMA_EMBEDDING_MODEL=%s\\nOLLAMA_CHAT_MODEL=%s\\nARGS=%s\\n' \"$RAG_PROVIDER\" \"$OLLAMA_BASE_URL\" \"$OLLAMA_EMBEDDING_MODEL\" \"$OLLAMA_CHAT_MODEL\" \"$*\" > \"$SMOKE_RESULT\"\n",
+        "printf 'RAG_PROVIDER=%s\\nOLLAMA_BASE_URL=%s\\nOLLAMA_EMBEDDING_MODEL=%s\\nOLLAMA_CHAT_MODEL=%s\\nARGS=%s\\n' \"$RAG_PROVIDER\" \"$OLLAMA_BASE_URL\" \"$OLLAMA_EMBEDDING_MODEL\" \"$OLLAMA_CHAT_MODEL\" \"$*\" > \"$SMOKE_RESULT\"\n"
+        "printf 'Indexed 61 chunks.\\nDPR evaluates several datasets. [Page 6]\\n\\nSources\\nPage | Score\\n---- | -----\\n6 | 0.674\\n'\n",
         encoding="utf-8",
     )
     for command in ("ollama", "curl", "pdf-rag"):
@@ -181,6 +184,8 @@ def test_ollama_smoke_script_forces_documented_config_and_reaches_cli(tmp_path: 
     )
 
     assert result.returncode == 0, result.stderr
+    assert "DPR evaluates several datasets. [Page 6]" in result.stdout
+    assert "6 | 0.674" in result.stdout
     assert not pull_calls.exists()
     assert calls.read_text(encoding="utf-8").splitlines() == [
         "--version",
@@ -195,6 +200,97 @@ def test_ollama_smoke_script_forces_documented_config_and_reaches_cli(tmp_path: 
         "OLLAMA_CHAT_MODEL=qwen3:4b\n"
         "ARGS=ask --pdf data/dpr-paper.pdf --question What datasets are used to evaluate DPR? --provider ollama --top-k 3 --show-sources\n"
     )
+
+
+@pytest.mark.parametrize(
+    "cli_output",
+    (
+        "Indexed 61 chunks.\nDPR evaluates several datasets.\n\nSources\nPage | Score\n---- | -----\n6 | 0.674\n",
+        "Indexed 61 chunks.\nDPR evaluates several datasets. [Page 6]\n\nSources\nPage | Score\n---- | -----\n6 | NaN\n",
+        "Indexed 61 chunks.\nDPR evaluates several datasets. [Page 6]\n\nSources\nPage | Score\n---- | -----\n6 | inf\n",
+    ),
+)
+def test_ollama_smoke_script_rejects_invalid_cli_output(tmp_path: Path, cli_output: str) -> None:
+    isolated_root = tmp_path / "repo"
+    (isolated_root / "scripts").mkdir(parents=True)
+    script = isolated_root / "scripts/smoke_ollama.sh"
+    shutil.copy2(ROOT / "scripts/smoke_ollama.sh", script)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "ollama").write_text(
+        "#!/usr/bin/env bash\n"
+        "case \"$1\" in\n"
+        "  --version) echo 'ollama version 0.32.15' ;;\n"
+        "  list) echo 'NAME ID SIZE MODIFIED' ;;\n"
+        "  show) exit 0 ;;\n"
+        "  *) exit 42 ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "curl").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    (fake_bin / "pdf-rag").write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%b' {cli_output!r}\n",
+        encoding="utf-8",
+    )
+    for command in ("ollama", "curl", "pdf-rag"):
+        os.chmod(fake_bin / command, 0o755)
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=tmp_path,
+        env={"PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "Smoke verification failed" in result.stderr
+    assert cli_output in result.stdout
+
+
+def test_ollama_smoke_script_preserves_cli_failure_output_and_status(tmp_path: Path) -> None:
+    isolated_root = tmp_path / "repo"
+    (isolated_root / "scripts").mkdir(parents=True)
+    script = isolated_root / "scripts/smoke_ollama.sh"
+    shutil.copy2(ROOT / "scripts/smoke_ollama.sh", script)
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    (fake_bin / "ollama").write_text(
+        "#!/usr/bin/env bash\n"
+        "case \"$1\" in\n"
+        "  --version) echo 'ollama version 0.32.15' ;;\n"
+        "  list) echo 'NAME ID SIZE MODIFIED' ;;\n"
+        "  show) exit 0 ;;\n"
+        "  *) exit 42 ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "curl").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    (fake_bin / "pdf-rag").write_text(
+        "#!/usr/bin/env bash\n"
+        "printf 'partial CLI output\\n'\n"
+        "exit 7\n",
+        encoding="utf-8",
+    )
+    for command in ("ollama", "curl", "pdf-rag"):
+        os.chmod(fake_bin / command, 0o755)
+
+    result = subprocess.run(
+        ["bash", str(script)],
+        cwd=tmp_path,
+        env={"PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 7
+    assert "partial CLI output\n" in result.stdout
+    assert "exited with status 7" in result.stderr
 
 
 def test_ollama_smoke_script_is_executable_and_shell_safe() -> None:

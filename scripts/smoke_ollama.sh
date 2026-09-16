@@ -28,13 +28,53 @@ for model in "${required_models[@]}"; do
   fi
 done
 
+smoke_output=$(mktemp "${TMPDIR:-/tmp}/pdf-rag-smoke.XXXXXX")
+trap 'rm -f "$smoke_output"' EXIT
+
+set +e
 RAG_PROVIDER=ollama \
 OLLAMA_BASE_URL="$smoke_ollama_base_url" \
 OLLAMA_EMBEDDING_MODEL="$smoke_embedding_model" \
 OLLAMA_CHAT_MODEL="$smoke_chat_model" \
-exec pdf-rag ask \
+pdf-rag ask \
   --pdf data/dpr-paper.pdf \
   --question "What datasets are used to evaluate DPR?" \
   --provider ollama \
   --top-k 3 \
-  --show-sources
+  --show-sources >"$smoke_output" 2>&1
+cli_status=$?
+set -e
+
+cat "$smoke_output"
+if [ "$cli_status" -ne 0 ]; then
+  echo "Smoke verification failed: pdf-rag exited with status $cli_status." >&2
+  exit "$cli_status"
+fi
+
+if ! awk '
+  BEGIN { answer = 0; citation = 0; valid = 0 }
+  /^Sources$/ { valid = (answer && citation); exit }
+  /^Indexed [0-9]+ chunks\.$/ { next }
+  /^[[:space:]]*$/ { next }
+  { answer = 1; if ($0 ~ /\[Page [0-9]+\]/) citation = 1 }
+  END { exit(valid ? 0 : 1) }
+' "$smoke_output"; then
+  echo "Smoke verification failed: CLI output needs a non-empty cited answer before Sources." >&2
+  exit 1
+fi
+
+if ! awk -F'|' '
+  BEGIN { in_sources = 0; in_table = 0; valid = 0 }
+  /^Sources$/ { in_sources = 1; next }
+  in_sources && /^Page[[:space:]]+\|[[:space:]]+Score[[:space:]]*$/ { in_table = 1; next }
+  in_table && /^----/ { next }
+  in_table && NF >= 2 {
+    score = $2
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", score)
+    if (score ~ /^[-+]?[0-9]+([.][0-9]+)?([eE][-+]?[0-9]+)?$/) valid = 1
+  }
+  END { exit(valid ? 0 : 1) }
+' "$smoke_output"; then
+  echo "Smoke verification failed: Sources must contain at least one finite numeric score." >&2
+  exit 1
+fi

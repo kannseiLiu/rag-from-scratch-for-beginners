@@ -250,6 +250,30 @@ def test_ollama_response_error_is_safe_and_actionable():
     assert "private request text" not in str(error.value)
 
 
+def test_ollama_embedder_maps_httpx_transport_errors_safely():
+    request = httpx.Request("POST", "http://127.0.0.1:11434/api/embed")
+    client = FakeOllamaClient(
+        error=httpx.ReadTimeout("private transport details", request=request)
+    )
+
+    with pytest.raises(ProviderError, match="Cannot connect to Ollama") as error:
+        OllamaEmbedder(client, "model").embed(["a"])
+
+    assert "private transport details" not in str(error.value)
+
+
+def test_ollama_generator_maps_httpx_transport_errors_safely():
+    request = httpx.Request("POST", "http://127.0.0.1:11434/api/chat")
+    client = FakeOllamaClient(
+        error=httpx.ReadTimeout("private transport details", request=request)
+    )
+
+    with pytest.raises(ProviderError, match="Cannot connect to Ollama") as error:
+        OllamaGenerator(client, "model").generate("question", "context")
+
+    assert "private transport details" not in str(error.value)
+
+
 def test_ollama_programming_errors_propagate():
     client = FakeOllamaClient(error=TypeError("client bug"))
 

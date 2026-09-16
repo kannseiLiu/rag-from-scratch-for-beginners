@@ -1,6 +1,7 @@
 """Offline contracts for GitHub contribution guidance."""
 
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -142,3 +143,40 @@ def test_pull_request_template_has_verification_and_privacy_checklist() -> None:
     assert pull_request.count("- [ ]") >= 5
     for sensitive_term in ("API key", ".env", "私人 PDF"):
         assert sensitive_term in pull_request
+
+
+def test_env_ignore_rules_protect_local_secrets_but_keep_example() -> None:
+    ignored = subprocess.run(
+        ["git", "check-ignore", "--no-index", "--", "production.env", ".env.local"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    example = subprocess.run(
+        ["git", "check-ignore", "--no-index", "-q", "--", ".env.example"],
+        cwd=ROOT,
+        check=False,
+    )
+
+    assert ignored.returncode == 0
+    assert ignored.stdout.splitlines() == ["production.env", ".env.local"]
+    assert example.returncode == 1
+
+
+def test_pdf_files_are_marked_binary_for_git_diff() -> None:
+    attributes = _read(".gitattributes")
+    assert "*.pdf binary" in attributes.splitlines()
+
+    result = subprocess.run(
+        ["git", "check-attr", "diff", "--", "data/dpr-paper.pdf", "tests/fixtures/two-pages.pdf"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.stdout.splitlines() == [
+        "data/dpr-paper.pdf: diff: unset",
+        "tests/fixtures/two-pages.pdf: diff: unset",
+    ]

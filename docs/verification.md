@@ -4,9 +4,9 @@
 
 ## 本次修订中新执行的检查
 
-以下命令是在本次修订中重新执行的；临时虚拟环境创建在仓库外，具体临时路径未写入记录。
+以下结果是在本次修订工作树中重新执行的；临时目录与任何密钥均未写入仓库。
 
-### 干净安装
+### 安装命令（可复现）
 
 在仓库外创建临时虚拟环境后，从仓库根目录运行：
 
@@ -16,32 +16,34 @@ pdf-rag --help
 python -m pytest -q
 ```
 
-- Python：3.12.1
-- pip：23.2.1
-- `pdf-rag --help`：退出码 0，并显示 `ask` 子命令。
-- pytest：119 passed，1.53s。
+新环境应使用 Python 3.11 或更高版本；`.[test]` 会安装测试所需的 PyYAML 和直接运行时依赖，包括 `httpx`。
 
-### Ollama 前置条件
+### 真实服务状态
 
-执行了 `ollama --version`、`ollama list`、`curl --fail --silent --show-error http://127.0.0.1:11434/api/tags`，以及对两个固定模型名的 `ollama show` 检查：
+本次修订没有重新启动或调用真实 Ollama，也没有发送 OpenAI 请求。因此，不能把下面的历史记录当作当前 smoke 脚本的实时结果。要在自己的机器上复现 Ollama 路径，请先安装并启动 Ollama，再执行：
 
-- Ollama：0.32.15
-- daemon：可用（curl 退出码 0）
-- embedding model：`nomic-embed-text:latest`
-- chat model：`qwen3:4b`
-- 没有执行 `ollama pull`。
+```sh
+ollama --version
+ollama list
+curl --fail --silent --show-error http://127.0.0.1:11434/api/tags
+ollama show nomic-embed-text
+ollama show qwen3:4b
+bash scripts/smoke_ollama.sh
+```
+
+脚本固定使用 `http://127.0.0.1:11434`、`nomic-embed-text` 和 `qwen3:4b`，只检查模型是否存在，不会自动执行 `ollama pull`。
 
 ### OpenAI-compatible 缺少密钥路径
 
-使用 `OPENAI_API_KEY=` 运行相同的 OpenAI provider 命令，退出码为 1，并显示 `OPENAI_API_KEY is required for the openai provider`；错误发生在 provider 创建之前。没有执行真实 OpenAI API 请求：`not run: no authorized API request`。
+使用 `OPENAI_API_KEY=` 可以在 provider 创建前验证缺少密钥路径；本次没有发送真实 OpenAI API 请求。
 
 ### 冒烟脚本契约
 
-契约测试在隔离临时仓库中使用本地 fake `ollama`、`curl` 和 `pdf-rag`，无网络请求；成功路径验证脚本最终到达 CLI，并强制传递文档规定的 daemon URL 和模型名，caller 环境与 `.env` 均无法覆盖，且不会调用 `ollama pull`。
+契约测试在隔离临时仓库中使用本地 fake `ollama`、`curl` 和 `pdf-rag`，无网络请求。脚本会捕获并原样输出 CLI 的合并输出；CLI 非零时保留该输出并返回原状态。成功时还要求答案非空、答案中含 `[Page N]` 引用、Sources 表至少有一个有限数值分数。测试同时验证固定 daemon URL/模型名不会被 caller 环境或 `.env` 覆盖，且不会调用 `ollama pull`。
 
 ## 保留的此前真实 Ollama CLI 证据
 
-以下结果来自此前直接执行的 `pdf-rag ask` 命令，而不是本次修订重新执行的 `scripts/smoke_ollama.sh`：
+以下结果来自此前直接执行的 `pdf-rag ask` 命令，不是本次修订重新执行的 `scripts/smoke_ollama.sh`，仅作为历史参考：
 
 ```sh
 pdf-rag ask \
@@ -52,7 +54,7 @@ pdf-rag ask \
   --show-sources
 ```
 
-此前运行索引了 61 个 chunks；答案非空并包含 `[Page 6]`。Sources 表分数为 0.674、0.645、0.626，均为有限数值。答案正文未记录，因为模型措辞不是稳定测试契约。本次没有把这组结果冒充为 smoke script 的真实运行证据。
+此前运行索引了 61 个 chunks；答案非空并包含 `[Page 6]`。Sources 表分数为 0.674、0.645、0.626，均为有限数值。答案正文未记录，因为模型措辞不是稳定测试契约。
 
 ## 独立新读者审阅
 
@@ -66,13 +68,16 @@ pdf-rag ask \
 
 ```sh
 python3 -m pytest -q tests/test_docs_contract.py
-# 15 passed in 0.35s
+# 19 passed
+
+python3 -m pytest -q tests/test_docs_contract.py tests/test_github_metadata.py tests/test_providers.py
+# 63 passed
 
 bash -n scripts/smoke_ollama.sh
 # exit code 0
 
 python3 -m pytest -q
-# 119 passed in 1.15s
+# 135 passed
 
 python3 -m compileall -q src examples legacy
 # exit code 0
@@ -85,9 +90,8 @@ git diff --check
 # exit code 0
 
 git status --short
-#  M docs/verification.md
-#  M scripts/smoke_ollama.sh
-#  M tests/test_docs_contract.py
+# expected changes: .gitattributes, .gitignore, docs/verification.md,
+# pyproject.toml, providers.py, smoke_ollama.sh, and their focused tests
 ```
 
 `python3 -m build` 在检查成功后产生的 `dist/` 仅包含 sdist 与 wheel，随后移出工作树；只保留上述预期的脚本、文档和契约测试改动，供提交。

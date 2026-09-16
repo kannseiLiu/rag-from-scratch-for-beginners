@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from math import isfinite
 from typing import Any, Protocol
 
+import httpx
 import ollama
 import openai
 from openai import OpenAI
@@ -100,13 +101,13 @@ def _normalize_embeddings(
 
 
 def _ollama_error(
-    error: ConnectionError | ollama.ResponseError, model: str
+    error: OSError | httpx.RequestError | ollama.ResponseError, model: str
 ) -> ProviderError:
     if isinstance(error, ollama.ResponseError) and error.status_code == 404:
         return ProviderError(
             f"Ollama model {model!r} is unavailable. Run `ollama pull {model}`."
         )
-    if isinstance(error, (ConnectionError, OSError)):
+    if isinstance(error, (OSError, httpx.RequestError)):
         return ProviderError("Cannot connect to Ollama. Start Ollama and try again.")
     return ProviderError(
         "Ollama request failed. Start Ollama and confirm the selected model is installed."
@@ -132,7 +133,7 @@ class OllamaEmbedder:
         values = _require_texts(texts)
         try:
             response = self._client.embed(model=self._model, input=values)
-        except (ConnectionError, ollama.ResponseError) as error:
+        except (OSError, httpx.RequestError, ollama.ResponseError) as error:
             raise _ollama_error(error, self._model) from None
         return _normalize_embeddings(response, "embeddings", len(values), "Ollama")
 
@@ -157,7 +158,7 @@ class OllamaGenerator:
                 ],
                 stream=False,
             )
-        except (ConnectionError, ollama.ResponseError) as error:
+        except (OSError, httpx.RequestError, ollama.ResponseError) as error:
             raise _ollama_error(error, self._model) from None
         return _normalize_text(_field(_field(response, "message"), "content"), "Ollama")
 
