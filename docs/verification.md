@@ -58,7 +58,7 @@ pdf-rag ask \
 
 结果：PASS，8/8。
 
-独立审阅者只查看了已跟踪仓库中的 `README.md`、`docs/*.md` 和 `data/README.md`，没有读取对话或本验证记录。八题均能仅凭这些文档回答：默认运行入口、embedding/chat model 分工、无泄漏切换 OpenAI、替换 PDF、页码与 overlap 的原因、扫描件 OCR、`--show-sources` 复核方式，以及项目明确不实现的生产能力。
+独立审阅者只查看了教学文件 `README.md`、`docs/concepts.md`、`docs/model-guide.md`、`docs/troubleshooting.md` 和 `data/README.md`；明确排除 `docs/verification.md`，也没有读取对话。八题均能仅凭这些教学文件回答：默认运行入口、embedding/chat model 分工、无泄漏切换 OpenAI、替换 PDF、页码与 overlap 的原因、扫描件 OCR、`--show-sources` 复核方式，以及项目明确不实现的生产能力。
 
 ## 最终本地验证
 
