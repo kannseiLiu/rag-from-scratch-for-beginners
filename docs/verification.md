@@ -20,7 +20,7 @@ python -m pytest -q
 
 ### 真实服务状态
 
-本次修订没有重新启动或调用真实 Ollama，也没有发送 OpenAI 请求。因此，不能把下面的历史记录当作当前 smoke 脚本的实时结果。要在自己的机器上复现 Ollama 路径，请先安装并启动 Ollama，再执行：
+本次修订在最终代码上重新运行了真实本地 Ollama 路径，没有发送 OpenAI 请求。复现命令为：
 
 ```sh
 ollama --version
@@ -33,6 +33,8 @@ bash scripts/smoke_ollama.sh
 
 脚本固定使用 `http://127.0.0.1:11434`、`nomic-embed-text` 和 `qwen3:4b`。预检查只确认模型已经存在，不会自动执行 `ollama pull`；随后会运行完整的 `pdf-rag ask` 冒烟流程并验证答案、页码引用和 Sources 分数。
 
+本次结果：Ollama 0.32.15，daemon 与两个固定模型均可用；索引 61 个 chunks，答案非空并包含 `[Page 6]`，Sources 分数为 0.674、0.645、0.626，脚本退出码为 0。没有执行 `ollama pull`。答案正文未写入仓库，因为模型措辞不是稳定测试契约。
+
 ### OpenAI-compatible 缺少密钥路径
 
 使用 `OPENAI_API_KEY=` 可以在 provider 创建前验证缺少密钥路径；本次没有发送真实 OpenAI API 请求。
@@ -41,9 +43,9 @@ bash scripts/smoke_ollama.sh
 
 契约测试在隔离临时仓库中使用本地 fake `ollama`、`curl` 和 `pdf-rag`，无网络请求。脚本会捕获并原样输出 CLI 的合并输出；CLI 非零时保留该输出并返回原状态。成功时还要求答案非空、答案中含 `[Page N]` 引用、Sources 表至少有一个有限数值分数。测试同时验证固定 daemon URL/模型名不会被 caller 环境或 `.env` 覆盖，且不会调用 `ollama pull`。
 
-## 保留的此前真实 Ollama CLI 证据
+## 此前直接 CLI 证据
 
-以下结果来自此前直接执行的 `pdf-rag ask` 命令，不是本次修订重新执行的 `scripts/smoke_ollama.sh`，仅作为历史参考：
+在完善自动校验脚本前，也曾直接执行同一个 `pdf-rag ask` 命令：
 
 ```sh
 pdf-rag ask \
@@ -54,7 +56,7 @@ pdf-rag ask \
   --show-sources
 ```
 
-此前运行索引了 61 个 chunks；答案非空并包含 `[Page 6]`。Sources 表分数为 0.674、0.645、0.626，均为有限数值。答案正文未记录，因为模型措辞不是稳定测试契约。
+该次运行同样索引了 61 个 chunks，答案包含 `[Page 6]`，Sources 分数为 0.674、0.645、0.626。这组历史结果只用于和本次最终 smoke 结果交叉核验。
 
 ## 独立新读者审阅
 
@@ -75,6 +77,9 @@ python3 -m pytest -q tests/test_docs_contract.py tests/test_github_metadata.py t
 
 bash -n scripts/smoke_ollama.sh
 # exit code 0
+
+bash scripts/smoke_ollama.sh
+# exit code 0; 61 chunks; cited answer; three finite scores
 
 python3 -m pytest -q
 # 138 passed
